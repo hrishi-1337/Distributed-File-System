@@ -1,13 +1,17 @@
 import json
+import math
 import sys
 import threading
 import time
+import os
 from xmlrpc.client import ServerProxy
 from xmlrpc.server import SimpleXMLRPCServer
 
 
 class Client:
     def __init__(self):
+        self.FILE_SIZE = 10240000
+        self.CHUNK_SIZE = 2560000
         self.id = None
         self.host = None
         self.port = None
@@ -61,9 +65,70 @@ class Client:
             # print("heartbeat received")
             pass
 
-    def createFile(self, filename):
-        print(filename)
-        self.files[filename] = {1:[1,2], 2:[2,3], 3:[3,4], 4:[1,4]}
+    def displayFile(self, file):
+        pass
+
+    def createFile(self, file):
+        with open('data/' + file, 'wb') as fout:
+            fout.write(bytes(file, 'utf-8')*self.FILE_SIZE)
+            fout.close()
+
+        parts_count = self.split(file)  
+        chunk_locations = {}
+        parts = [i for i in range (1, parts_count+1)]
+        window = math.ceil(parts_count/4)
+        overlap = math.ceil(parts_count/4)
+        splits = [parts[i:i+window+overlap] for i in range(0, len(parts), window)]
+        j = 0
+        for i in splits[0]:
+            if i not in splits[3] and j < overlap:
+                splits[3].append(i)
+                j += 1
+
+        for i in range(len(splits)):
+            for j in splits[i]:
+                if j in chunk_locations:
+                    chunk_locations[j].append(i+1)
+                else:
+                    chunk_locations[j] = [i+1]
+
+        # print(parts_count)  
+        # print(splits)
+        # print(len(splits))
+        # print(chunk_locations)
+
+        self.files[file] = (parts_count, chunk_locations)
+
+        os.remove('data/' + file)
+        for i in range(1, parts):
+            os.remove('data/' + file + '_' + str(i))
+
+    def split(self, file):
+        parts = 1
+        input = open('data/' + file, 'rb')                   
+        while 1:                                       
+            chunk = input.read(self.CHUNK_SIZE)              
+            if not chunk: break
+            filename = os.path.join("data", (file + '_' + str(parts)))
+            fileobj  = open(filename, 'wb')
+            fileobj.write(chunk)
+            parts += 1
+            fileobj.close()                            
+        input.close()
+        return parts-1
+    
+    def merge(self, file):
+        output = open('storage/' + file, 'wb')
+        parts  = self.files[file]
+        for part in range(1, parts):
+            filepath = os.path.join("data", file + '_' + str(part))
+            fileobj  = open(filepath, 'rb')
+            while 1:
+                filebytes = fileobj.read(self.CHUNK_SIZE)
+                if not filebytes: break
+                output.write(filebytes)
+            fileobj.close()
+        output.close()
 
     def receiveChunk(self, chunk):
         pass
@@ -79,9 +144,9 @@ class Client:
 
     def menu(self):
         while True:
-            print("Display Files\t\t[f]")
-            print("Create File\t\t[c]")
-            print("Delete File\t\t[d]")
+            print("List Files\t\t[l]")
+            print("Create File\t\t[c <filename>]")
+            print("Delete File\t\t[d <filename>]")
             print("Exit\t\t\t[e]")
             resp = input("Choice: ").lower().split()
             if not resp:
@@ -90,7 +155,9 @@ class Client:
                 print("===========================")
                 print("Files:")
                 for k, v in self.files.items():
-                    print(f"{k}: {v}")                
+                    print(f"{k}") 
+                resp2 = input("Choice: ").lower().split()
+                self.displayFile(resp2[0])            
                 print("===========================")
             elif resp[0] == 'c':
                 print("===========================")
