@@ -4,6 +4,7 @@ import sys
 import threading
 import time
 import os
+import shutil
 from xmlrpc.client import ServerProxy, Binary
 from xmlrpc.server import SimpleXMLRPCServer
 
@@ -65,17 +66,43 @@ class Client:
             # print("heartbeat received")
             pass
 
-    def getLedger(self, ledger):
-        pass
+    def getLedger(self):        
+        if self.leader != self.id:
+            try:
+                self.file_ledger = self.map[self.leader].sendLedger()
+            except ConnectionRefusedError:
+                self.election()
 
     def election():
         pass
 
-    def displayFile(self, file):
-        pass
+    def viewFile(self, file):        
+        self.getLedger()
+        print("Retrieving file..")        
+        if file in self.file_ledger:
+            chunk_locations = self.file_ledger[file]
+            for k, v in chunk_locations.items():
+                for i in v:
+                    filename = file + '_' + str(k)
+                    if self.id == str(i):
+                        shutil.copy('storage' + self.id + '/' + filename, 'temp/' + filename)
+                    else:
+                        self.map[str(i)].sendChunk(self.id, filename)    
+            self.merge(file, len(chunk_locations))
+            f = open('temp/' + file,"r")
+            print("File successfully retrieved!")
+            print(f.read(20))
+        else:
+            print("File not present")
 
-    def getChunks(self, chunk):
-        pass
+    def sendChunk(self, id, filename):
+        with open('storage' + self.id + '/' + filename, "rb") as handle:
+            binary_data = Binary(handle.read())
+        self.map[str(id)].receiveChunk(filename, binary_data)
+
+    def receiveChunk(self, filename, binary_data):
+        with open('temp/' + filename, "wb") as handle:
+            handle.write(binary_data.data)
 
     def createFile(self, file):
         with open('temp/' + file, 'wb') as fout:
@@ -106,6 +133,7 @@ class Client:
         # print(len(splits))
         # print(chunk_locations)
 
+        print("Storing file..")
         self.sendChunks(file, chunk_locations)
         self.file_ledger[file] = chunk_locations
 
@@ -134,10 +162,9 @@ class Client:
         input.close()
         return parts-1
     
-    def merge(self, file):
-        output = open('storage' + self.id + '/' + file, 'wb')
-        parts  = self.files[file]
-        for part in range(1, parts):
+    def merge(self, file, parts):
+        output = open('temp/' + file, 'wb')
+        for part in range(1, parts+1):
             filepath = os.path.join("temp", file + '_' + str(part))
             fileobj  = open(filepath, 'rb')
             while 1:
@@ -153,9 +180,9 @@ class Client:
                 filename = file + '_' + str(k)
                 with open("temp/" + filename, "rb") as handle:
                     binary_data = Binary(handle.read())
-                self.map[str(i)].receiveChunk(filename, binary_data)
+                self.map[str(i)].saveChunk(filename, binary_data)
 
-    def receiveChunk(self, filename, binary_data):
+    def saveChunk(self, filename, binary_data):
         with open('storage' + self.id + '/' + filename, "wb") as handle:
             handle.write(binary_data.data)
 
@@ -190,6 +217,7 @@ class Client:
     def menu(self):
         while True:
             print("List Files\t\t[l]")
+            print("View File\t\t[v <filename>]")
             print("Create File\t\t[c <filename>]")
             print("Delete File\t\t[d <filename>]")
             print("Exit\t\t\t[e]")
@@ -197,21 +225,19 @@ class Client:
             if not resp:
                 continue
             elif resp[0] == 'l':
-                if self.leader != self.id:
-                    try:
-                        self.file_ledger = self.map[self.leader].sendLedger()
-                    except ConnectionRefusedError:
-                        self.election()
+                self.getLedger()
                 print("===========================")
                 print("Files:")
                 for k, v in self.file_ledger.items():
-                    print(f"{k} | Nodes: {v}")
-                # resp2 = input("View file choice: ").lower().split()
-                # self.displayFile(resp2[0])            
+                    print(f"{k} | Nodes: {v}")           
                 print("===========================")
             elif resp[0] == 'c':
                 print("===========================")
                 self.createFile(resp[1])
+                print("===========================")
+            elif resp[0] == 'v':
+                print("===========================")
+                self.viewFile(resp[1])
                 print("===========================")
             elif resp[0] == 'd':
                 if self.leader != self.id:
