@@ -5,6 +5,7 @@ import threading
 import time
 import os
 import shutil
+import random
 from xmlrpc.client import ServerProxy, Binary
 from xmlrpc.server import SimpleXMLRPCServer
 
@@ -18,6 +19,7 @@ class Client:
         self.port = None
         self.config = None
         self.leader = None
+        self.heartbeat_timer = None
         self.map = {}
         self.file_ledger = {}
 
@@ -45,36 +47,56 @@ class Client:
         print("Map: " +str(self.map))
 
     def heartbeatThread(self):
-        thread = threading.Thread(target=self.heartbeat)
+        thread = threading.Thread(target=self._heartbeat)
         thread.daemon = True
         thread.start()
         return thread
     
-    def heartbeat(self):
+    def _heartbeat(self):
         while True:
             if self.leader != self.id:
-                for k, v, in self.map.items():
-                    if k != str(self.id):
-                        try:
-                            v.receiveHeartbeat(1)
-                            time.sleep(5)
-                        except ConnectionRefusedError:
-                            pass
-    
-    def receiveHeartbeat(self, value):
-        if value == 1:
-            # print("heartbeat received")
-            pass
+                try:
+                    self.file_ledger = self.map[self.leader].sendLedger()
+                    print("Heartbeat ACKed")
+                    time.sleep(self.heartbeat_timer)
+                except ConnectionRefusedError:
+                    print("Leader offline, starting election")                    
+                    self.election()
 
     def getLedger(self):        
         if self.leader != self.id:
             try:
                 self.file_ledger = self.map[self.leader].sendLedger()
             except ConnectionRefusedError:
+                print("Leader offline, starting election")  
                 self.election()
 
-    def election():
-        pass
+    def election(self):
+        flag = False
+        for k, v in self.map.items():
+            if k > self.id:
+                try:
+                   flag = v.receiveElection()
+                except ConnectionRefusedError:
+                    pass
+        if not flag:            
+            self.leader = self.id
+            for k, v in self.map.items():
+                if k != self.id:
+                    try:
+                        v.receiveLeader(self.id)
+                        print("Node {0} elected as new leader".format(self.leader))
+                    except ConnectionRefusedError:
+                        pass
+
+    def receiveElection(self):
+        self.election()
+        print("Leader down, election started")
+        return True
+    
+    def receiveLeader(self, new_leader):            
+        self.leader = new_leader
+        print("Node {0} elected as new leader".format(self.leader))
 
     def viewFile(self, file):        
         self.getLedger()
@@ -141,6 +163,7 @@ class Client:
             try:
                 self.map[self.leader].updateLedger(file, chunk_locations)
             except ConnectionRefusedError:
+                print("Leader offline, starting election")  
                 self.election()
 
         print(f"File {file} created with {parts_count} parts and located at nodes: {chunk_locations}")
@@ -244,6 +267,7 @@ class Client:
                     try:
                         flag = self.file_ledger = self.map[self.leader].deleteFile(resp[1])
                     except ConnectionRefusedError:
+                        print("Leader offline, starting election")
                         self.election()
                 else:
                     flag = self.deleteFile(resp[1])
@@ -268,13 +292,15 @@ class Client:
 
         self.createRPCServer()
         self.createProxyMap()
+        self.heartbeat_timer = random.randint(7, 12)
         time.sleep(0.2)
+
         input("Press <enter> to start")
         print("===========================")
         self.leader = max(self.map)
         print("Node {0} is the leader".format(self.leader))
 
-        # self.heartbeatThread()
+        self.heartbeatThread()
         self.menu()
 
 if __name__ == '__main__':
