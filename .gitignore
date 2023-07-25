@@ -13,7 +13,10 @@ build/
 develop-eggs/
 dist/
 data/
-temp/
+temp1/
+temp2/
+temp3/
+temp4/
 storage1/
 storage2/
 storage3/

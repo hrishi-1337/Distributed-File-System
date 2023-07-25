@@ -103,31 +103,49 @@ class Client:
         print("Retrieving file..")        
         if file in self.file_ledger:
             chunk_locations = self.file_ledger[file]
+            merge_flag = False
             for k, v in chunk_locations.items():
+                retrieve_flag = False
                 for i in v:
                     filename = file + '_' + str(k)
                     if self.id == str(i):
-                        shutil.copy('storage' + self.id + '/' + filename, 'temp/' + filename)
+                        shutil.copy('storage' + self.id + '/' + filename, 'temp' + self.id + '/' + filename)
+                        retrieve_flag = True
+                        break
                     else:
-                        self.map[str(i)].sendChunk(self.id, filename)    
-            self.merge(file, len(chunk_locations))
-            f = open('temp/' + file,"r")
-            print("File successfully retrieved!")
-            print(f.read(20))
+                        try:
+                            self.map[str(i)].sendChunk(self.id, filename)
+                            retrieve_flag = True
+                            break   
+                        except ConnectionRefusedError:
+                            pass 
+                if not retrieve_flag:                    
+                    print("Part {0} could not be retrieved".format(k))
+                    merge_flag = True
+            if not merge_flag:
+                self.merge(file, len(chunk_locations))
+                f = open('temp' + self.id + '/' + file,"r")
+                print("File successfully retrieved!")
+                print(f.read(20))
+            else:
+                print("File cannot be retrieved!")
         else:
             print("File not present")
 
     def sendChunk(self, id, filename):
         with open('storage' + self.id + '/' + filename, "rb") as handle:
             binary_data = Binary(handle.read())
-        self.map[str(id)].receiveChunk(filename, binary_data)
+        try:
+            self.map[str(id)].receiveChunk(filename, binary_data)          
+        except ConnectionRefusedError:
+            pass 
 
     def receiveChunk(self, filename, binary_data):
-        with open('temp/' + filename, "wb") as handle:
+        with open('temp' + self.id + '/' + filename, "wb") as handle:
             handle.write(binary_data.data)
 
     def createFile(self, file):
-        with open('temp/' + file, 'wb') as fout:
+        with open('temp' + self.id + '/' + file, 'wb') as fout:
             fout.write(bytes(file, 'utf-8')*self.FILE_SIZE)
             fout.close()
 
@@ -167,17 +185,17 @@ class Client:
                 self.election()
 
         print(f"File {file} created with {parts_count} parts and located at nodes: {chunk_locations}")
-        os.remove('temp/' + file)
+        os.remove('temp' + self.id + '/' + file)
         for i in range(1, parts_count + 1):
-            os.remove('temp/' + file + '_' + str(i))
+            os.remove('temp' + self.id + '/' + file + '_' + str(i))
 
     def split(self, file):
         parts = 1
-        input = open('temp/' + file, 'rb')                   
+        input = open('temp' + self.id + '/' + file, 'rb')                   
         while 1:                                       
             chunk = input.read(self.CHUNK_SIZE)              
             if not chunk: break
-            filename = os.path.join("temp", (file + '_' + str(parts)))
+            filename = os.path.join('temp' + self.id + '/', (file + '_' + str(parts)))
             fileobj  = open(filename, 'wb')
             fileobj.write(chunk)
             parts += 1
@@ -186,9 +204,9 @@ class Client:
         return parts-1
     
     def merge(self, file, parts):
-        output = open('temp/' + file, 'wb')
+        output = open('temp' + self.id + '/' + file, 'wb')
         for part in range(1, parts+1):
-            filepath = os.path.join("temp", file + '_' + str(part))
+            filepath = os.path.join('temp' + self.id + '/', file + '_' + str(part))
             fileobj  = open(filepath, 'rb')
             while 1:
                 filebytes = fileobj.read(self.CHUNK_SIZE)
@@ -201,9 +219,12 @@ class Client:
         for k, v in chunk_locations.items():
             for i in v:
                 filename = file + '_' + str(k)
-                with open("temp/" + filename, "rb") as handle:
+                with open('temp' + self.id + '/' + filename, "rb") as handle:
                     binary_data = Binary(handle.read())
-                self.map[str(i)].saveChunk(filename, binary_data)
+                try:
+                    self.map[str(i)].saveChunk(filename, binary_data)          
+                except ConnectionRefusedError:
+                    pass 
 
     def saveChunk(self, filename, binary_data):
         with open('storage' + self.id + '/' + filename, "wb") as handle:
@@ -221,7 +242,10 @@ class Client:
                     if self.id == str(i):
                         self.deleteChunk(filename)
                     else:
-                        self.map[str(i)].deleteChunk(filename)
+                        try:
+                            self.map[str(i)].deleteChunk(filename)                                  
+                        except ConnectionRefusedError:
+                            pass 
             if len(self.file_ledger) == 1:
                 self.file_ledger.pop(file)
                 self.file_ledger = {}
