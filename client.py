@@ -62,6 +62,7 @@ class Client:
                 except ConnectionRefusedError:
                     print("Leader offline, starting election")                    
                     self.election()
+                    time.sleep(2)
 
     def getLedger(self):        
         if self.leader != self.id:
