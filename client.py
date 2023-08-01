@@ -89,7 +89,7 @@ class Client:
                         print("Node {0} elected as new leader".format(self.leader))
                     except ConnectionRefusedError:
                         pass
-
+                                                                                                              
     def receiveElection(self):
         self.election()
         print("Leader down, election started")
@@ -103,9 +103,11 @@ class Client:
         self.getLedger()
         print("Retrieving file..")        
         if file in self.file_ledger:
+            begin = time.time()
             chunk_locations = self.file_ledger[file]
             merge_flag = False
             for k, v in chunk_locations.items():
+                
                 retrieve_flag = False
                 for i in v:
                     filename = file + '_' + str(k)
@@ -128,6 +130,8 @@ class Client:
                 f = open('temp' + self.id + '/' + file,"r")
                 print("File successfully retrieved!")
                 print(f.read(20))
+                end = time.time()
+                print(f"View Time taken : {end - begin}")
             else:
                 print("File cannot be retrieved!")
         else:
@@ -146,6 +150,7 @@ class Client:
             handle.write(binary_data.data)
 
     def createFile(self, file):
+        begin = time.time()
         with open('temp' + self.id + '/' + file, 'wb') as fout:
             fout.write(bytes(file, 'utf-8')*self.FILE_SIZE)
             fout.close()
@@ -186,6 +191,8 @@ class Client:
                 self.election()
 
         print(f"File {file} created with {parts_count} parts and located at nodes: {chunk_locations}")
+        end = time.time()
+        print(f"Create Time taken : {end - begin}")
         os.remove('temp' + self.id + '/' + file)
         for i in range(1, parts_count + 1):
             os.remove('temp' + self.id + '/' + file + '_' + str(i))
@@ -288,6 +295,7 @@ class Client:
                 self.viewFile(resp[1])
                 print("===========================")
             elif resp[0] == 'd':
+                begin = time.time()
                 if self.leader != self.id:
                     try:
                         flag = self.file_ledger = self.map[self.leader].deleteFile(resp[1])
@@ -299,6 +307,8 @@ class Client:
                 print("===========================")
                 if flag:
                     print("File successfully deleted")
+                    end = time.time()
+                    print(f"Delete Time taken : {end - begin}")
                 else:
                     print("File not present")
                 print("===========================")
