@@ -1,1 +1,5 @@
-# distributed_file_system
+# Distributed File System
+
+This project presents an implementation of a Distributed File System using Python, XMLRPC, and the Bully Algorithm for leader election. The system allows multiple nodes to share and access files across a network, providing transparent file access and manipulation. The leader election algorithm ensures consistency and efficient task coordination among the nodes. The system demonstrates fault tolerance through chunk replication, allowing files to be fully retrieved even with up to 50\% nodes down.
+
+The [paper](https://github.com/hrishi-1337/distributed_file_system/blob/main/report.pdf) also discusses scalability and suggests improvements for future work, including dynamic onboarding, Byzantine fault tolerance, and file editing capabilities. Experimental results showcase the average speeds for file creation, deletion, and retrieval based on file size. Overall, this Distributed File System implementation offers valuable insights and provides a foundation for further research and development in the field of distributed computing.
